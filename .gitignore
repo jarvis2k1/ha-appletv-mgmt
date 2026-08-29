@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Node (for Lovelace card, later)
+node_modules/
+lovelace/*/dist/
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+
+# HA test state
+.storage/
+config/
+
+# Secrets
+secrets.yaml
+.env
+
+# Internal ops / cross-session handover doc — contains SSH access, deploy
+# recipes, live network layout. Kept in the memory system, NOT the repo
+# (esp. before any public / HACS publish). See memory/reference_* docs.
+HANDOVER.md
+
+# Claude Code workspace state (worktrees, plans, settings)
+.claude/
+
+# Nested standalone repo — separate GitHub project for the pyatv tvOS26 patch
+# (lives here for proximity; tracked independently at
+# https://github.com/jarvis2k1/ha-pyatv-tvos26-patch)
+ha-pyatv-tvos26-patch/

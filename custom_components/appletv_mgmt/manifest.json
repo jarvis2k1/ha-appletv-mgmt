@@ -1,0 +1,17 @@
+{
+  "domain": "appletv_mgmt",
+  "name": "Apple TV Mgmt",
+  "codeowners": [
+    "@jarvis2k1"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "http",
+    "media_player"
+  ],
+  "documentation": "https://github.com/jarvis2k1/ha-appletv-mgmt",
+  "integration_type": "service",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/jarvis2k1/ha-appletv-mgmt/issues",
+  "version": "0.22.0"
+}

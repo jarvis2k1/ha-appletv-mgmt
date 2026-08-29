@@ -1,0 +1,167 @@
+name: Test
+
+on:
+  push:
+    branches: ["**"]
+    tags-ignore: ["**"]   # tag pushes are already covered by the branch push
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write       # for the post-checks commit status (fixes GitHub's
+                        # "Pull request status couldn't be checked" warning,
+                        # which reads the legacy combined-status endpoint
+                        # — empty when only Check Runs are reported).
+  pull-requests: read   # for querying the live merge SHA via the pulls
+                        # API; the event payload's merge_commit_sha can
+                        # be stale when GitHub recomputes during the run.
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.12 = current HA Core baseline; 3.13 = HA's next; 3.11 keeps
+        # the floor honest. The dev install runs 3.14 locally.
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: "pip"
+          cache-dependency-path: requirements_dev.txt
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_dev.txt
+
+      - name: Run pytest
+        run: pytest tests/ -v --tb=short
+
+      - name: Test count summary
+        if: always()
+        run: |
+          echo "### pytest summary (py${{ matrix.python }})" >> $GITHUB_STEP_SUMMARY
+          pytest tests/ --collect-only -q 2>&1 | tail -3 >> $GITHUB_STEP_SUMMARY || true
+
+  manifest-validation:
+    name: manifest.json shape
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate manifest.json
+        run: |
+          python -c "
+          import json, sys
+          m = json.load(open('custom_components/appletv_mgmt/manifest.json'))
+          # NOTE: 'homeassistant' is NOT a valid manifest key (hassfest rejects
+          # it) — the minimum-HA-version floor lives in hacs.json instead.
+          # 'requirements' is OPTIONAL in Home Assistant — an integration that
+          # pulls in nothing beyond core simply omits it, and hassfest accepts
+          # that. We used to list aiohttp there, which ships with core and does
+          # not belong in a manifest (HACS review, hacs/default#9134); once it
+          # was dropped the key went away entirely, so requiring it here was
+          # wrong.
+          required = {'domain', 'name', 'version', 'documentation', 'codeowners',
+                      'config_flow', 'integration_type', 'iot_class',
+                      'dependencies'}
+          missing = required - set(m)
+          if missing:
+              print(f'manifest.json missing required keys: {sorted(missing)}', file=sys.stderr)
+              sys.exit(1)
+          assert m['domain'] == 'appletv_mgmt', f'unexpected domain: {m[\"domain\"]!r}'
+          assert isinstance(m['codeowners'], list) and m['codeowners'], 'codeowners must be a non-empty list'
+          assert m['iot_class'] in ('local_polling', 'local_push', 'cloud_polling', 'cloud_push',
+                                    'assumed_state', 'calculated'), f'bad iot_class: {m[\"iot_class\"]!r}'
+          print('manifest.json OK — version', m['version'])
+          "
+
+  hassfest:
+    name: hassfest (HA integration validation)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hacs/action@main
+        with:
+          category: integration
+
+  # Posts a single combined commit status after pytest + manifest jobs
+  # finish. GitHub's web-UI banner ("Pull request status couldn't be
+  # checked and may be out of date") reads the legacy commit-statuses
+  # API, NOT the modern Check Runs. Without this job, the combined
+  # endpoint stays at state=pending forever and the banner sticks.
+  #
+  # We post to BOTH the head SHA and the merge SHA (when running for a
+  # pull_request event) because GitHub's PR UI checks the merge commit's
+  # combined status — that's the "what would the merged tree look like"
+  # commit, and it's distinct from the head SHA. The merge SHA changes
+  # whenever main moves or the PR head updates; the workflow re-fires
+  # on each push and re-posts, so the status stays fresh.
+  commit-status:
+    name: commit status (combined)
+    runs-on: ubuntu-latest
+    needs: [pytest, manifest-validation]
+    if: always()
+    steps:
+      - name: Post success / failure to combined status (head + merge)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          OUTCOME: ${{ (needs.pytest.result == 'success' && needs.manifest-validation.result == 'success') && 'success' || 'failure' }}
+        run: |
+          set -e
+          post_status() {
+            local sha="$1"
+            # Reject empty, "null", and anything that's not a 40-char
+            # hex SHA. Guards against the API returning an error JSON
+            # body that we accidentally treat as a SHA (happened on a
+            # prior run where the token lacked pull-requests:read and
+            # the 403 response became the "SHA" we POSTed to).
+            if [ -z "$sha" ] || [ "$sha" = "null" ]; then
+              return 0
+            fi
+            if ! printf '%s' "$sha" | grep -qE '^[0-9a-f]{40}$'; then
+              echo "skip — not a valid sha: $(printf '%s' "$sha" | head -c 60)"
+              return 0
+            fi
+            echo "posting $OUTCOME to $sha"
+            gh api -X POST "repos/${{ github.repository }}/statuses/$sha" \
+              -f "state=$OUTCOME" \
+              -f "context=ci/all checks" \
+              -f "description=pytest 3.11/3.12/3.13 + manifest.json shape" \
+              -f "target_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          post_status "$HEAD_SHA"
+          # Query the LIVE merge SHA when this is a PR run. The event
+          # payload's `merge_commit_sha` is the value at trigger time,
+          # which GitHub may have recomputed by the time the workflow
+          # actually runs (e.g. another push landed, main moved). The
+          # API gives us the current value.
+          if [ -n "$PR_NUMBER" ]; then
+            MERGE_SHA=$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER" --jq .merge_commit_sha 2>/dev/null) || MERGE_SHA=""
+            post_status "$MERGE_SHA"
+          fi

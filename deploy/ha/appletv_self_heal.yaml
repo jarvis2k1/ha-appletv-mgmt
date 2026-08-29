@@ -1,0 +1,174 @@
+# Apple TV pyatv stale-state self-heal
+# =====================================
+# OPTIONAL / mostly SUPERSEDED. Since v0.18.0 the integration performs this
+# recovery itself (in-integration proactive pyatv reload; extended in v0.19.3
+# to mid-playback freezes), so most installs do NOT need this automation. It's
+# kept as a belt-and-suspenders template for advanced users.
+#
+# TO USE: replace the three placeholders below with your own entities/id:
+#   media_player.YOUR_APPLE_TV               -> your Apple TV media_player entity
+#   media_player.YOUR_TV                     -> your display / kill-switch TV (optional)
+#   YOUR_APPLE_TV_CONFIG_ENTRY_ID            -> the apple_tv (pyatv) integration's
+#                                               ConfigEntry id (Settings -> Devices &
+#                                               Services -> Apple TV -> the entry).
+#
+# Recovers from the recurring tvOS 26 Companion-protocol drop (pyatv#2845),
+# where HA's built-in `apple_tv` (pyatv) integration silently loses its push
+# connection and `media_player.YOUR_APPLE_TV` gets stuck — the root cause behind
+# "Apple TV on but nothing on the HA". The fix reloads the `apple_tv` config
+# entry, which re-establishes the pyatv connection (recovers in ~4s).
+#
+# Three stale shapes are handled (all documented in ha-pyatv-tvos26-patch/README):
+#
+#   CASE A — mirror stuck `off`/`unavailable` while the Apple TV is actually on.
+#     Heal only when the Samsung display is NOT definitively `off` (nobody can
+#     watch the Apple TV unless its only display is on). FAIL-OPEN: `tv != 'off'`
+#     treats `unknown`/`unavailable` as "heal", so a real freeze is never missed
+#     when the Samsung integration lags. Suppressed when the Samsung is `off` ->
+#     kills standby/overnight churn without a fragile network gate.
+#
+#   CASE B — mirror stuck on `playing` for hours after the TV was turned off
+#     (e.g. a movie left running at bedtime), which over-counts screen time.
+#     Detected by CONTINUOUS-playing duration via `last_changed` (NOT
+#     `last_updated`): heal when state == 'playing' and now()-last_changed > 6h.
+#       * Why last_changed, not last_updated: last_updated is event-driven (only
+#         moves on a pyatv push), so it stalls during a healthy long title too
+#         and would false-fire. last_changed moves only on a real STATE change,
+#         so it measures genuine continuous-playing time. (media_position-based
+#         detection is impossible here: pyatv reports position=None on this
+#         device because the tvos26 bug breaks the now-playing metadata fetch.)
+#       * 6h threshold is DATA-VALIDATED against 8 days of recorder history:
+#         it caught exactly one real freeze (Disney+ stuck `playing` 00:39->10:26
+#         = 588 min overnight 2026-05-31) and zero legit sessions (longest legit
+#         continuous-playing span was 74 min; an uninterrupted 2.43h movie still
+#         clears 6h with margin).
+#
+#   CASE C — mirror stuck on `idle` while the Samsung display is `on` (kid is
+#     actively using the device, but pyatv's UI state has frozen at home screen /
+#     between titles). Detected when state == 'idle' and now()-last_changed >
+#     10 min. STRICT Samsung gate (tv == 'on', NOT fail-open): legitimate
+#     home-screen idle is the COMMON case during normal use, so fail-open would
+#     cause mid-session reloads when the Samsung integration glitches. Cases A/B
+#     use fail-open because off/unavailable/playing-6h are themselves anomalous;
+#     Case C must be conservative because idle is benign. Threshold rationale:
+#     observed 13+ min user-visible freeze (2026-06-14) with kid actively using
+#     device; 10 min = ~1.3x margin below observed, ~2x above memory's lower
+#     bound (5-10 min typical bug window). Healthy interactive browsing emits
+#     frequent state transitions (idle <-> on <-> paused as previews play), so
+#     10 min with zero last_changed updates is a strong freeze signal. The
+#     recovery-gate's per-case post-state whitelist closes the idle->idle no-op
+#     concern: an idle pre-state that recovers to idle is silently rejected, and
+#     only a transition to an active-playback state (playing/paused/buffering/on)
+#     logs an audit entry.
+#
+# RECOVERY-GATED audit: the action records pre_state, reloads, then logs only if
+# the state CHANGED to a real value that is STABLE across a 6s window AND lands
+# in a per-case post-state whitelist — Case A (off/unavailable -> playing/paused/
+# buffering/on), Case B (playing -> off/paused/buffering/on), Case C (idle ->
+# playing/paused/buffering/on). Two-sample check (post1 == current after 6s) is
+# required because the reload's reconnect flickers through transient states.
+# Whitelist (not blacklist) makes the intent explicit: audit fires only on a
+# real recovery, never on a no-op (e.g., idle -> idle silently rejected).
+# Reload verified EMPIRICALLY to be wake-safe (Case A 2026-06-08 HW test); Case
+# C reuses the same primitive, so wake-safety transfers without re-testing.
+#
+# Tested 2026-06-08 (HW-in-the-loop, Sonos silenced): T1 live standby -> no fire
+# (suppression); T2 live Case-A condition -> fires reload, Apple TV stays off
+# (wake-safe), recovery-gate silent on the no-op. Gate truth-table validated incl
+# Case B. (Active-playback-on-TV couldn't be automated: the encrypted Samsung
+# can't be powered on over the network — no WoL — so mute couldn't be guaranteed.)
+# Case C deferred to live verification (2026-06-14 incident is the witness): the
+# 13+ min stuck-idle event with kid actively using device matches the trigger;
+# next live occurrence should fire the state trigger at T+10 min and log a
+# Case-C heal idle->playing in the logbook.
+#
+# Deployment-specific values to adjust for another install:
+#   - apple_tv config entry_id ... YOUR_APPLE_TV_CONFIG_ENTRY_ID
+#   - Apple TV mirror entity ...... media_player.YOUR_APPLE_TV
+#   - display / kill-switch TV .... media_player.YOUR_TV
+#
+# Deploy via automations.yaml or the REST config API
+# POST /api/config/automation/config/appletv_pyatv_stale_autoreload. Validate
+# config edits with POST /api/config/core/check_config before reloading.
+
+# ── automations.yaml ─────────────────────────────────────────────────────
+- id: appletv_pyatv_stale_autoreload
+  alias: "Apple TV — self-heal pyatv when stale"
+  description: >-
+    Reload the apple_tv config entry when the mirror is stale: (A) off/unavailable
+    while the Samsung display is not definitively off (fail-open), (B) stuck on
+    'playing' continuously >6h (last_changed), or (C) stuck on 'idle' >10 min
+    while the Samsung display is on (strict gate). No DNS gate. Per-case recovery-
+    gated audit. Reload verified wake-safe.
+  mode: single
+  max_exceeded: silent
+  trigger:
+    - platform: state
+      entity_id: media_player.YOUR_APPLE_TV
+      to: "off"
+      for: { minutes: 4 }
+    - platform: state
+      entity_id: media_player.YOUR_APPLE_TV
+      to: "unavailable"
+      for: { minutes: 4 }
+    - platform: state
+      entity_id: media_player.YOUR_APPLE_TV
+      to: "idle"
+      for: { minutes: 10 }
+    # /5 also evaluates Case B (a mirror frozen on 'playing' never fires a state
+    # trigger) and re-checks Case C (catches a freeze already in progress at HA
+    # restart, or where the Samsung gate flips from unknown->on mid-freeze). Max
+    # detection latency: ~5 min past 6h for Case B, ~5 min past 10 min for Case C.
+    - platform: time_pattern
+      minutes: "/5"
+  condition:
+    - condition: template
+      value_template: >-
+        {% set st = states.media_player.YOUR_APPLE_TV %}
+        {% set tv = states('media_player.YOUR_TV') %}
+        {% if st is none %}false
+        {% elif st.state in ['off','unavailable'] %}{{ tv != 'off' }}
+        {% elif st.state == 'playing' %}{{ (now() - st.last_changed).total_seconds() > 21600 }}
+        {% elif st.state == 'idle' %}{{ (now() - st.last_changed).total_seconds() > 600 and tv == 'on' }}
+        {% else %}false{% endif %}
+  action:
+    - variables:
+        pre_state: "{{ states('media_player.YOUR_APPLE_TV') }}"
+    - service: homeassistant.reload_config_entry
+      data:
+        entry_id: YOUR_APPLE_TV_CONFIG_ENTRY_ID
+    # Recovery gate: audit only when the reload changed the mirror to a real
+    # state, per pre-state case. Whitelist (not blacklist) makes intent explicit
+    # and closes the idle->idle no-op hole (Case C). The reload's reconnect
+    # briefly flickers through transient states (off->unavailable->unknown->on
+    # ->off observed), so we require the recovered state to be STABLE across a
+    # 6s window (post1 == current) before logging.
+    #   Case A pre in [off, unavailable]  -> post in [playing, paused, buffering, on]
+    #   Case B pre == playing             -> post in [off, paused, buffering, on]
+    #   Case C pre == idle                -> post in [playing, paused, buffering, on]
+    - delay: { seconds: 14 }
+    - variables:
+        post1: "{{ states('media_player.YOUR_APPLE_TV') }}"
+    - delay: { seconds: 6 }
+    - condition: template
+      value_template: >-
+        {% set cur = states('media_player.YOUR_APPLE_TV') %}
+        {% set stable = (cur == post1) %}
+        {% set changed = (cur != pre_state) %}
+        {% set ok = (pre_state in ['off','unavailable'] and cur in ['playing','paused','buffering','on'])
+                 or (pre_state == 'playing' and cur in ['off','paused','buffering','on'])
+                 or (pre_state == 'idle' and cur in ['playing','paused','buffering','on']) %}
+        {{ stable and changed and ok }}
+    - service: logbook.log
+      data:
+        name: "Apple TV self-heal"
+        message: >-
+          reloaded apple_tv to clear a stale pyatv mirror; media_player went from
+          '{{ pre_state }}' to '{{ states('media_player.YOUR_APPLE_TV') }}'.
+        entity_id: media_player.YOUR_APPLE_TV
+
+# ── configuration.yaml (OPTIONAL diagnostic — NOT used by the gate) ────────
+# The earlier DNS-activity sensor is left deployed only as a diagnostic; the
+# automation does NOT depend on it. Safe to remove. (Superseded: a DNS-recency
+# gate false-fired on a standby Apple TV's background keepalive DNS, and failed
+# CLOSED on a proxy hiccup.) Do not commit the real X-API-Key.
