@@ -1,0 +1,145 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Apple TV Mgmt — device",
+        "description": "Pick what kind of device this profile is for. Apple TV uses pyatv + AdGuard. Xbox uses FRITZ!Box presence + internet-access switch (no Microsoft account needed).",
+        "data": {
+          "device_kind": "Device kind"
+        }
+      },
+      "apple_tv": {
+        "title": "Apple TV Mgmt",
+        "description": "Set up a parental-control profile for one Apple TV. The Apple TV integration must already be set up and producing a media_player entity.",
+        "data": {
+          "profile_name": "Profile name",
+          "apple_tv_entity_id": "Apple TV media player entity",
+          "adguard_url": "AdGuard URL (optional)",
+          "adguard_api_key": "X-API-Key (when using the AppleTV-AdGuard-Proxy addon)",
+          "adguard_username": "AdGuard username (only for direct AdGuard with HTTP auth)",
+          "adguard_password": "AdGuard password (only for direct AdGuard with HTTP auth)",
+          "adguard_client_name": "AdGuard client name for this Apple TV",
+          "daily_budget_min": "Daily budget (minutes)"
+        },
+        "data_description": {
+          "adguard_url": "Optional DNS-block layer. Base address of AdGuard Home, or of the proxy add-on. Leave blank to run without AdGuard — enforcement still works via Apple-TV-sleep and TV-off."
+        }
+      },
+      "xbox": {
+        "title": "Apple TV Mgmt — Xbox",
+        "description": "Track an Xbox via the FRITZ!Box: presence (device_tracker) for time tracking, an internet-access switch for enforcement. No Microsoft / Xbox Live account or HACS setup needed.",
+        "data": {
+          "profile_name": "Profile name",
+          "apple_tv_entity_id": "Xbox presence sensor (device_tracker.*)",
+          "enforcement_switch_entity_id": "Xbox internet-access switch (switch.*)",
+          "daily_budget_min": "Daily budget (minutes)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot reach AdGuard Home (check URL/port and that the addon is running). See HA log for details.",
+      "client_not_found": "AdGuard client with that name doesn't exist.",
+      "unknown": "Unexpected error — check HA log for the traceback.",
+      "invalid_quiet_windows": "Quiet-windows format invalid — expected comma-separated HH:MM-HH:MM[:Label].",
+      "client_name_required": "Enter the AdGuard client name (or clear the AdGuard URL to run without AdGuard)."
+    },
+    "abort": {
+      "already_configured": "This Apple TV is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Apple TV Mgmt options",
+        "data": {
+          "daily_budget_min": "Daily budget (minutes)",
+          "grace_seconds": "Grace period before hard-enforce (seconds)",
+          "idle_grace_minutes": "Idle grace: keep counting after pause (minutes)",
+          "tv_entity_id": "TV media_player entity (optional — for hard TV shutdown)",
+          "tv_shutdown_enabled": "Also shut down the TV when enforcement triggers",
+          "quiet_windows": "Quiet windows (e.g. \"20:30-07:00:Bedtime, 12:00-14:00:Lunch\") — leave blank for none",
+          "adult_mode_duration_min": "Adult mode duration (minutes) — how long the override switch bypasses enforcement",
+          "budget_movies": "Daily budget for Movies (minutes, 0 = unlimited)",
+          "budget_tv_shows": "Daily budget for TV Shows (minutes, 0 = unlimited)",
+          "budget_gaming": "Daily budget for Gaming (minutes, 0 = unlimited)",
+          "budget_other": "Daily budget for Other apps (minutes, 0 = unlimited)",
+          "budget_linear_tv": "Daily budget for Live TV (minutes, 0 = unlimited)",
+          "notify_target": "HA notify service for parent approval push (e.g. mobile_app_your_phone)",
+          "request_expire_min": "Auto-deny pending extension requests after N minutes"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "time_used_today": {
+        "name": "Time used today"
+      },
+      "time_remaining_today": {
+        "name": "Time remaining today"
+      },
+      "current_app": {
+        "name": "Current app"
+      },
+      "enforcement_state": {
+        "name": "State machine (raw)"
+      },
+      "effective_state": {
+        "name": "Effective state"
+      },
+      "extension_minutes_today": {
+        "name": "Extension minutes today"
+      },
+      "today_history": {
+        "name": "Today's app usage"
+      },
+      "attribution_source": {
+        "name": "Attribution source"
+      },
+      "dns_classifier_confidence": {
+        "name": "DNS classifier confidence"
+      },
+      "attribution_gap_minutes_today": {
+        "name": "Attribution gap minutes today"
+      },
+      "tv_on_minutes_today": {
+        "name": "TV on minutes today"
+      }
+    },
+    "switch": {
+      "tv_shutdown": {
+        "name": "Shut down TV on enforcement"
+      },
+      "adult_mode": {
+        "name": "Adult mode"
+      },
+      "enforcement_enabled": {
+        "name": "Enforcement enabled (legacy)"
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "enforced": "Enforced",
+          "monitor_only": "Monitor only",
+          "paused": "Paused"
+        }
+      }
+    }
+  },
+  "services": {
+    "force_block": {
+      "name": "Force block",
+      "description": "Immediately enforce — block AdGuard and sleep the Apple TV."
+    },
+    "grant_extension": {
+      "name": "Grant extension",
+      "description": "Add (or remove) minutes from today's budget."
+    },
+    "reset_usage": {
+      "name": "Reset usage",
+      "description": "Clear today's counters and unblock."
+    }
+  }
+}

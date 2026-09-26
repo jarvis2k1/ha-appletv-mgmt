@@ -1,0 +1,16 @@
+# Dev/test dependencies for HA AppleTV Mgmt.
+# Phase 1 keeps the dev surface minimal — pure-logic tests + an in-memory
+# aiohttp mock. The full Home Assistant test stack (homeassistant +
+# pytest-homeassistant-custom-component) is brought in starting in Phase 2.
+
+pytest>=8.0
+pytest-asyncio>=0.23
+# aiohttp is capped <3.14: aiohttp 3.14 made ClientResponse.__init__ require a
+# `stream_writer` kwarg that aioresponses (latest 0.7.8) does not pass, which
+# broke every test_adguard.py / test_categorize.py mock with
+# "TypeError: ClientResponse.__init__() missing ... 'stream_writer'".
+# aiohttp 3.10–3.13 all pass with aioresponses 0.7.8 (verified). Lift the cap
+# once aioresponses ships aiohttp-3.14 support. (Test-env only — the integration
+# uses Home Assistant's bundled aiohttp at runtime; this pin has no runtime effect.)
+aiohttp>=3.10,<3.14
+aioresponses>=0.7.8

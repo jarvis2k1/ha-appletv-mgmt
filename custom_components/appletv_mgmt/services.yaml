@@ -1,0 +1,45 @@
+force_block:
+  name: Force block
+  description: Immediately put a profile into ENFORCING (blocks AdGuard + sleeps the Apple TV).
+  fields:
+    profile_id:
+      name: Profile ID
+      description: The config-entry ID of the profile to block.
+      required: true
+      selector:
+        config_entry:
+          integration: appletv_mgmt
+
+grant_extension:
+  name: Grant extension
+  description: Add (or subtract) minutes to today's budget for a profile. If currently enforcing, unblocks within seconds.
+  fields:
+    profile_id:
+      name: Profile ID
+      description: The config-entry ID of the profile.
+      required: true
+      selector:
+        config_entry:
+          integration: appletv_mgmt
+    minutes:
+      name: Minutes
+      description: Minutes to add (negative to subtract).
+      required: true
+      selector:
+        number:
+          min: -240
+          max: 240
+          step: 1
+          unit_of_measurement: min
+
+reset_usage:
+  name: Reset usage
+  description: Wipe today's usage counter, clear granted extensions, and unblock if blocked.
+  fields:
+    profile_id:
+      name: Profile ID
+      description: The config-entry ID of the profile.
+      required: true
+      selector:
+        config_entry:
+          integration: appletv_mgmt

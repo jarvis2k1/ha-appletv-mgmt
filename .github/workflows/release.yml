@@ -1,0 +1,28 @@
+name: Release
+
+# Push a version tag (e.g. `git tag v0.22.0 && git push --tags`) and this
+# publishes a GitHub Release. HACS installs from the latest Release, so
+# tagging is how new versions ship.
+#
+# No zip asset: `hacs.json` does not set `zip_release`, so HACS installs from
+# the tag's source tree and any attached archive is never downloaded. We used
+# to attach `appletv_mgmt.zip` anyway — identical content, pure dead weight,
+# and one more thing to drift out of sync (HACS review, hacs/default#9134).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
