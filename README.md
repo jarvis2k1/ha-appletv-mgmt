@@ -1,6 +1,6 @@
 # Apple TV Mgmt
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration) [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2025.1%2B-blue.svg)](https://www.home-assistant.io/) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5.svg)](https://github.com/hacs/integration) [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.3%2B-blue.svg)](https://www.home-assistant.io/) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 > A Home Assistant custom integration for **kids' screen-time on the living-room TV**. It tracks usage per app, enforces a daily (and per-category) time budget by putting the Apple TV to sleep and turning the TV off, speaks a friendly heads-up before time runs out, and exposes services + a REST API + an optional admin panel for parental-control automations. A **game console** (e.g. Xbox, via presence + a router internet switch) can share the same room budget. **AdGuard Home is an optional extra DNS-block layer — not required.**
 
@@ -77,7 +77,7 @@ HA AppleTV Mgmt/
 
 **Required**
 
-- **Home Assistant** 2025.1+ (uses the modern config-entry, coordinator, and selector APIs).
+- **Home Assistant** 2026.3+ (uses the modern config-entry, coordinator, and selector APIs).
 - **Built-in `apple_tv` integration** already configured — it produces the `media_player.*` entity this integration listens to. (For an Xbox-only profile you instead point at a `device_tracker` + a `switch`; see [Multiple devices](#multiple-devices--a-second-apple-tv-or-an-xbox) — no Apple TV needed for that profile.)
 
 **Recommended**
@@ -97,13 +97,13 @@ HA AppleTV Mgmt/
 
 ### 1. Install the integration (HACS)
 
-[HACS](https://hacs.xyz/) (the Home Assistant Community Store) is the add-on that installs custom integrations for you and keeps them updated. If you don't have it yet, install HACS first — [5-minute guide](https://hacs.xyz/docs/use/download/download/). Then add this repo as a **custom repository**:
+[HACS](https://hacs.xyz/) (the Home Assistant Community Store) is the add-on that installs custom integrations for you and keeps them updated. If you don't have it yet, install HACS first — [5-minute guide](https://hacs.xyz/docs/use/download/download/). Apple TV Mgmt is in the **HACS default store**, so there is nothing to add first:
 
 1. Open **HACS** from the sidebar.
-2. Top-right **⋮** menu → **Custom repositories**.
-3. Paste `https://github.com/jarvis2k1/ha-appletv-mgmt`, choose category **Integration**, and click **Add**.
-4. Close the dialog, then search HACS for **Apple TV Mgmt** and open it → **Download**.
-5. **Restart Home Assistant** (Settings → System → Restart) so HA picks up the new integration.
+2. Search for **Apple TV Mgmt** and open it → **Download**.
+3. **Restart Home Assistant** (Settings → System → Restart) so HA picks up the new integration.
+
+Requires **Home Assistant 2026.3 or newer** — HACS will not offer it on older versions.
 
 > **One-click add:** [![Open your Home Assistant instance and open a repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=jarvis2k1&repository=ha-appletv-mgmt&category=integration)
 

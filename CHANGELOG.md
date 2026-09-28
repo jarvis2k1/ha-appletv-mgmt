@@ -8,6 +8,24 @@ The companion proxy addon is versioned independently — see [its changelog](htt
 
 ## [Unreleased]
 
+### Fixed (v0.23.3 — the README advertised the wrong minimum Home Assistant)
+
+Raised by the HACS reviewer when approving hacs/default#9134 (2026-09-02): the
+README said **"Home Assistant 2025.1+"** in the badge and again in the
+requirements list, while `hacs.json` enforces **`2026.3.0`**. A user on 2025.x
+followed the docs, tried to install, and got a HACS refusal that contradicted
+them. Both now say 2026.3+.
+
+Also brought the README in line with being in the **HACS default store**: the
+badge said "HACS Custom", and the install steps walked people through adding a
+custom repository — a step nobody needs any more. It is now "search HACS,
+download, restart", with the minimum version stated where people install.
+
+`tests/test_readme_ha_version.py` pins the README's advertised minimum to
+`hacs.json`, so the two cannot drift apart again. Confirmed failing against the
+old README, naming both lines.
+
+
 ### Fixed (v0.23.2 — `day_rollover_hour` silently reverted on every HA restart)
 
 **The 05:00 rollover never survived a restart.** Set to `5` on 2026-09-02, found
